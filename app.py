@@ -5,17 +5,26 @@ import requests
 import re
 import time
 from collections import Counter
-import nltk
-from nltk.corpus import stopwords
-from nltk.tokenize import word_tokenize
 
-# Descargar recursos de NLTK si no están disponibles
+# Inicializar NLTK de manera segura
 try:
-    nltk.data.find('tokenizers/punkt')
-    nltk.data.find('corpora/stopwords')
-except LookupError:
-    nltk.download('punkt')
-    nltk.download('stopwords')
+    import nltk
+    from nltk.corpus import stopwords
+    from nltk.tokenize import word_tokenize
+    
+    # Descargar recursos de NLTK si no están disponibles
+    try:
+        nltk.data.find('tokenizers/punkt')
+        nltk.data.find('corpora/stopwords')
+    except LookupError:
+        print("Descargando recursos de NLTK...")
+        nltk.download('punkt', quiet=True)
+        nltk.download('stopwords', quiet=True)
+    
+    NLTK_AVAILABLE = True
+except ImportError:
+    print("NLTK no disponible, usando tokenización básica")
+    NLTK_AVAILABLE = False
 
 app = Flask(__name__)
 CORS(app)  # Permitir CORS para GPT
@@ -36,16 +45,36 @@ AREAS_CIENTIFICAS = {
     'dolor': ['dolor', 'analgesia', 'nociceptivo', 'crónico', 'agudo', 'manejo del dolor', 'algología']
 }
 
+def tokenizar_texto(texto):
+    """Tokenizar texto con o sin NLTK"""
+    if NLTK_AVAILABLE:
+        try:
+            return word_tokenize(texto, language='spanish')
+        except:
+            return word_tokenize(texto)
+    else:
+        # Tokenización básica sin NLTK
+        texto = re.sub(r'[^\w\s]', ' ', texto)
+        return texto.split()
+
+def obtener_stopwords():
+    """Obtener stopwords con o sin NLTK"""
+    if NLTK_AVAILABLE:
+        try:
+            return set(stopwords.words('spanish'))
+        except:
+            pass
+    
+    # Stopwords básicas en español si NLTK no está disponible
+    return {'el', 'la', 'de', 'que', 'y', 'a', 'en', 'un', 'es', 'se', 'no', 'te', 'lo', 'le', 'da', 'su', 'por', 'son', 'con', 'para', 'al', 'del', 'los', 'las', 'una', 'como', 'pero', 'sus', 'han', 'ser', 'está', 'este', 'más', 'todo', 'tiene', 'muy', 'bien', 'puede', 'sin', 'hasta', 'entre', 'hacer', 'sobre', 'también', 'donde', 'cuando', 'después', 'todos', 'aunque', 'antes', 'cual', 'cada', 'mismo', 'otros', 'así', 'desde', 'durante', 'mientras', 'tanto', 'según', 'sino', 'vez', 'tal', 'caso', 'forma', 'parte', 'tipo', 'manera', 'través', 'contra'}
+
 def detectar_area_cientifica(texto):
     """Detecta el área científica del texto"""
     try:
         texto_limpio = re.sub(r'[^\w\s]', ' ', texto.lower())
-        palabras = word_tokenize(texto_limpio, language='spanish')
+        palabras = tokenizar_texto(texto_limpio)
         
-        try:
-            stop_words = set(stopwords.words('spanish'))
-        except:
-            stop_words = {'el', 'la', 'de', 'que', 'y', 'a', 'en', 'un', 'es', 'se', 'no', 'te', 'lo', 'le', 'da', 'su', 'por', 'son', 'con', 'para', 'al', 'del', 'los', 'las', 'una', 'como', 'pero', 'sus', 'han', 'ser', 'está', 'este', 'más', 'todo', 'tiene', 'muy', 'bien', 'puede', 'sin', 'hasta', 'entre', 'hacer', 'sobre', 'también', 'donde', 'cuando', 'después', 'todos', 'aunque', 'antes', 'cual', 'cada', 'mismo', 'otros', 'así', 'desde', 'durante', 'mientras', 'tanto', 'según', 'sino', 'vez', 'tal', 'caso', 'forma', 'parte', 'tipo', 'manera', 'través', 'contra'}
+        stop_words = obtener_stopwords()
         
         palabras_relevantes = [p for p in palabras if len(p) > 3 and p not in stop_words]
         
@@ -65,10 +94,11 @@ def extraer_terminos_clave_especificos(texto):
     """Extrae términos clave más específicos y relevantes para el tema exacto"""
     try:
         texto_limpio = re.sub(r'[^\w\s]', ' ', texto.lower())
-        palabras = word_tokenize(texto_limpio, language='spanish')
+        palabras = tokenizar_texto(texto_limpio)
         
         # Stopwords expandidas para eliminar palabras muy generales
-        stop_words = {'el', 'la', 'de', 'que', 'y', 'a', 'en', 'un', 'es', 'se', 'no', 'te', 'lo', 'le', 'da', 'su', 'por', 'son', 'con', 'para', 'al', 'del', 'los', 'las', 'una', 'como', 'pero', 'sus', 'han', 'ser', 'está', 'este', 'más', 'todo', 'tiene', 'muy', 'bien', 'puede', 'sin', 'hasta', 'entre', 'hacer', 'sobre', 'también', 'donde', 'cuando', 'después', 'todos', 'aunque', 'antes', 'cual', 'cada', 'mismo', 'otros', 'así', 'desde', 'durante', 'mientras', 'tanto', 'según', 'sino', 'vez', 'tal', 'caso', 'forma', 'parte', 'tipo', 'manera', 'través', 'contra', 'sistema', 'proceso', 'función', 'área', 'nivel', 'importante', 'general', 'principal', 'mayor', 'mejor', 'gran', 'diferentes', 'varios', 'muchos'}
+        stop_words = obtener_stopwords()
+        stop_words.update({'sistema', 'proceso', 'función', 'área', 'nivel', 'importante', 'general', 'principal', 'mayor', 'mejor', 'gran', 'diferentes', 'varios', 'muchos'})
         
         # Filtrar palabras relevantes (mínimo 4 caracteres, no stopwords)
         palabras_relevantes = [p for p in palabras if len(p) >= 4 and p not in stop_words]
@@ -126,7 +156,7 @@ def extraer_terminos_clave_especificos(texto):
             terminos_largos = [p for p in palabras_relevantes if len(p) > 5]
             mejores_terminos.extend(terminos_largos[:3])
         
-        return mejores_terminos[:4]  # Máximo 4 términos muy específicos
+        return mejores_terminos[:4] if mejores_terminos else [texto.split()[0] if texto.split() else "fisioterapia"]
         
     except Exception as e:
         print(f"Error en extraer_terminos_clave_especificos: {e}")
@@ -143,7 +173,7 @@ def buscar_pubmed_apa_especifico(terminos, max_results=3):
             
             # Query alternativa con términos individuales más específicos
             terminos_especificos = [f'"{t}"[Title/Abstract]' for t in terminos if len(t) > 4]
-            query_alternativa = " AND ".join(terminos_especificos)
+            query_alternativa = " AND ".join(terminos_especificos) if terminos_especificos else f'"{terminos[0]}"[Title/Abstract]'
             
             # Combinar ambas queries
             query = f"({query_principal}) OR ({query_alternativa})"
@@ -230,10 +260,9 @@ def buscar_pubmed_apa_especifico(terminos, max_results=3):
                             relevance_score += 5   # Puntuación media por palabras del término
                 
                 # 2. Verificar especificidad del tema
-                abstract = info.get("abstract", "").lower()
-                combined_text = f"{title} {abstract}"
+                combined_text = title
                 
-                # Contar coincidencias específicas en título + abstract
+                # Contar coincidencias específicas en título
                 for termino in terminos:
                     coincidencias = combined_text.count(termino.lower())
                     relevance_score += coincidencias * 3

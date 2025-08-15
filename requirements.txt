@@ -1,3 +1,4 @@
-flask
-gunicorn
-requests
+flask==3.1.1
+gunicorn==23.0.0
+requests==2.32.4
+flask_cors==3.1.1
